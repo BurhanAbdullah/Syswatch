@@ -8,6 +8,7 @@ executes host-mutating actions.
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import platform
 import re
@@ -154,32 +155,49 @@ def load_metrics() -> dict:
 
 
 def process_lineage(limit: int = 250) -> list[dict]:
-    # WMIC is removed from newer Windows builds; PowerShell is available on
-    # supported desktop/server Windows and returns bounded process metadata.
+    """Return bounded native Windows process metadata without command lines.
+
+    Win32_Process is used instead of Get-Process CSV output because its
+    structured JSON representation avoids locale-dependent CSV parsing and
+    exposes the parent PID directly. Access failures are isolated per record
+    by selecting only metadata fields that do not require elevated inspection.
+    """
+    bounded = max(1, min(int(limit), 250))
     ps = (
-        "Get-Process | Select-Object -First %d Id,Name,Path,CPU,StartTime | "
-        "ConvertTo-Csv -NoTypeInformation"
-    ) % max(1, min(limit, 250))
-    output = _run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps], timeout=5)
+        "$ErrorActionPreference='SilentlyContinue'; "
+        "$p=Get-CimInstance Win32_Process | "
+        "Select-Object -First %d ProcessId,ParentProcessId,Name,ExecutablePath,CreationDate; "
+        "@($p) | ConvertTo-Json -Compress -Depth 3"
+    ) % bounded
+    output = _run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps],
+        timeout=5,
+    )
     if not output:
         return []
-    rows = output.splitlines()
-    if len(rows) < 2:
+    try:
+        payload = json.loads(output)
+    except (json.JSONDecodeError, TypeError):
         return []
-    header = [x.strip('"') for x in rows[0].split(",")]
+    rows = payload if isinstance(payload, list) else [payload]
     result = []
-    for row in rows[1:limit + 1]:
-        parts = [x.strip('"') for x in row.split(",")]
-        if len(parts) != len(header):
+    for item in rows[:bounded]:
+        if not isinstance(item, dict):
             continue
-        item = dict(zip(header, parts))
         try:
-            pid = int(item.get("Id", "0"))
-        except ValueError:
+            pid = int(item.get("ProcessId"))
+            ppid = int(item.get("ParentProcessId") or 0)
+        except (TypeError, ValueError):
             continue
+        name = str(item.get("Name") or "unknown")
         result.append({
-            "pid": pid, "ppid": 0, "state": "running", "name": item.get("Name", "unknown"),
-            "exe": item.get("Path", item.get("Name", "unknown")), "user": "unresolved", "start_time": item.get("StartTime", ""),
+            "pid": pid,
+            "ppid": ppid,
+            "state": "running",
+            "name": name,
+            "exe": str(item.get("ExecutablePath") or name),
+            "user": "unresolved",
+            "start_time": str(item.get("CreationDate") or ""),
         })
     return result
 
