@@ -16,7 +16,7 @@ def test_product_site_has_required_sections():
         "Local-first",
         "Least privilege",
         "No destructive default",
-        "No cross-platform support claim",
+        "other platforms are not promoted as released support",
         "No published release is represented here",
     )
     for marker in required:
