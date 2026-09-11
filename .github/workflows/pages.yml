@@ -66,6 +66,8 @@ jobs:
                   super().__init__()
                   self.links = []
                   self.assets = []
+                  self.images = []
+                  self.nav_landmarks = 0
 
               def handle_starttag(self, tag, attrs):
                   attrs = dict(attrs)
@@ -75,10 +77,19 @@ jobs:
                       value = attrs.get(key)
                       if value and not value.startswith(('http://', 'https://', '#', 'mailto:')):
                           self.assets.append(value.split('#', 1)[0].split('?', 1)[0])
+                  if tag == 'img':
+                      alt = attrs.get('alt')
+                      if alt is None or not alt.strip():
+                          raise SystemExit('image missing non-empty alt text')
+                      self.images.append(alt)
+                  if tag == 'nav' and attrs.get('aria-label') == 'Primary navigation':
+                      self.nav_landmarks += 1
 
           for page in pages:
               parser = LinkParser()
               parser.feed(page.read_text(encoding='utf-8'))
+              if parser.nav_landmarks != 1:
+                  raise SystemExit(f'{page.name}: expected exactly one labelled primary navigation landmark')
               for href in parser.links + parser.assets:
                   if href.startswith(('#', 'http://', 'https://', 'mailto:')):
                       continue
@@ -88,7 +99,13 @@ jobs:
                   if not target.exists():
                       raise SystemExit(f'broken local reference: {page.name}: {href}')
 
-          print(f'validated {len(pages)} HTML pages, shared assets, and local references')
+          css = (site / 'styles.css').read_text(encoding='utf-8')
+          required_css = ('focus-visible', 'prefers-reduced-motion', '@media(max-width:560px)')
+          missing_css = [item for item in required_css if item not in css]
+          if missing_css:
+              raise SystemExit(f'missing accessibility/responsive CSS contract: {missing_css}')
+
+          print(f'validated {len(pages)} HTML pages, navigation landmarks, images, responsive CSS, and local references')
           PY
 
       - name: Confirm pre-release deployment remains disabled
