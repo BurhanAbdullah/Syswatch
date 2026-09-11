@@ -47,10 +47,22 @@ jobs:
           RELEASE_SHA="$(git rev-list -n 1 "refs/tags/${{ steps.release.outputs.ref_name }}")"
           test "$RELEASE_SHA" = "$(git rev-parse HEAD)"
           echo "release_sha=$RELEASE_SHA" >> "$GITHUB_ENV"
-      - name: Set up Python for release SBOM generation
+      - name: Validate release tag is exactly current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          MAIN_SHA="$(git rev-parse refs/remotes/origin/main)"
+          test "$RELEASE_SHA" = "$MAIN_SHA"
+          echo "Verified release commit matches origin/main: $MAIN_SHA"
+      - name: Set up Python for release validation and SBOM generation
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
+      - name: Install pinned release validation dependency
+        run: python -m pip install --disable-pip-version-check -r requirements-release-test.txt
+      - name: Run full release test suite on exact tagged commit
+        run: python -m pytest -q
       - name: Install pinned release audit dependency
         run: python -m pip install --disable-pip-version-check -r requirements-release-audit.txt
       - name: Generate release build SBOM evidence
@@ -59,8 +71,10 @@ jobs:
           set -euo pipefail
           python -m pip_audit -r requirements-windows-build.txt --format cyclonedx-json --output WINDOWS-BUILD-SBOM.cdx.json
           python -m pip_audit -r requirements-release-audit.txt --format cyclonedx-json --output RELEASE-AUDIT-SBOM.cdx.json
+          python -m pip_audit -r requirements-release-test.txt --format cyclonedx-json --output RELEASE-TEST-SBOM.cdx.json
           test -s WINDOWS-BUILD-SBOM.cdx.json
           test -s RELEASE-AUDIT-SBOM.cdx.json
+          test -s RELEASE-TEST-SBOM.cdx.json
       - name: Build Debian package with shared builder
         shell: bash
         run: |
@@ -115,6 +129,7 @@ jobs:
             RELEASE-METADATA.txt
             WINDOWS-BUILD-SBOM.cdx.json
             RELEASE-AUDIT-SBOM.cdx.json
+            RELEASE-TEST-SBOM.cdx.json
 
   windows-package:
     needs: package
@@ -159,8 +174,10 @@ jobs:
         run: |
           python -m pip_audit -r requirements-windows-build.txt --format cyclonedx-json --output WINDOWS-BUILD-SBOM.cdx.json
           python -m pip_audit -r requirements-release-audit.txt --format cyclonedx-json --output RELEASE-AUDIT-SBOM-WINDOWS.cdx.json
+          python -m pip_audit -r requirements-release-test.txt --format cyclonedx-json --output RELEASE-TEST-SBOM-WINDOWS.cdx.json
           if (!(Test-Path -Path WINDOWS-BUILD-SBOM.cdx.json) -or (Get-Item WINDOWS-BUILD-SBOM.cdx.json).Length -eq 0) { throw 'Windows build SBOM is empty' }
           if (!(Test-Path -Path RELEASE-AUDIT-SBOM-WINDOWS.cdx.json) -or (Get-Item RELEASE-AUDIT-SBOM-WINDOWS.cdx.json).Length -eq 0) { throw 'Windows release audit SBOM is empty' }
+          if (!(Test-Path -Path RELEASE-TEST-SBOM-WINDOWS.cdx.json) -or (Get-Item RELEASE-TEST-SBOM-WINDOWS.cdx.json).Length -eq 0) { throw 'Windows release test SBOM is empty' }
       - name: Set deterministic Windows release build environment
         shell: pwsh
         run: |
@@ -239,6 +256,7 @@ jobs:
             SHA256SUMS-WINDOWS
             WINDOWS-BUILD-SBOM.cdx.json
             RELEASE-AUDIT-SBOM-WINDOWS.cdx.json
+            RELEASE-TEST-SBOM-WINDOWS.cdx.json
 
   publish:
     needs: [package, windows-package]
@@ -279,7 +297,9 @@ jobs:
           test -f release/RELEASE-METADATA.txt
           test -f release/WINDOWS-BUILD-SBOM.cdx.json
           test -f release/RELEASE-AUDIT-SBOM.cdx.json
+          test -f release/RELEASE-TEST-SBOM.cdx.json
           test -f release/RELEASE-AUDIT-SBOM-WINDOWS.cdx.json
+          test -f release/RELEASE-TEST-SBOM-WINDOWS.cdx.json
           (
             cd release
             sha256sum --check SHA256SUMS
@@ -299,3 +319,5 @@ jobs:
             release/WINDOWS-BUILD-SBOM.cdx.json
             release/RELEASE-AUDIT-SBOM.cdx.json
             release/RELEASE-AUDIT-SBOM-WINDOWS.cdx.json
+            release/RELEASE-TEST-SBOM.cdx.json
+            release/RELEASE-TEST-SBOM-WINDOWS.cdx.json

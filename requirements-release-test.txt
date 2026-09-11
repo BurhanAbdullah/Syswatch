@@ -1,0 +1,2 @@
+# Release-time full validation dependency; not shipped by SYSWATCH.
+pytest==9.1.1
