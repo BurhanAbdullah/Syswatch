@@ -6,10 +6,12 @@ on:
     paths:
       - 'docs/**'
       - '.github/workflows/pages.yml'
+      - '.github/workflows/**'
   pull_request:
     paths:
       - 'docs/**'
       - '.github/workflows/pages.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -112,7 +114,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -Eq 'actions/(configure-pages|deploy-pages|upload-pages-artifact)@' .github/workflows/pages.yml; then
-            echo 'Pages deployment action found before release gate cleared' >&2
+          if grep -R -nE 'actions/(configure-pages|deploy-pages|upload-pages-artifact)@' .github/workflows; then
+            echo 'Pages deployment action found in repository workflows before release gate cleared' >&2
             exit 1
           fi
