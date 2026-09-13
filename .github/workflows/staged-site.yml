@@ -1,0 +1,109 @@
+name: Validate SYSWATCH staged site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/staged-site.yml'
+  pull_request:
+    paths:
+      - 'site/**'
+      - '.github/workflows/staged-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staged-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate pre-release staged site
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s site/index.html
+          test -s site/logo.svg
+          test -s site/robots.txt
+
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+
+          root = Path('site').resolve()
+          index = root / 'index.html'
+          text = index.read_text(encoding='utf-8')
+
+          required = (
+              'SYSTEM WATCH', 'LOCAL-FIRST ENDPOINT SECURITY',
+              'Ubuntu 24.04 LTS / Linux amd64', 'Pre-release',
+              'noindex,nofollow,noarchive', 'MONITOR · PROTECT · STAY AHEAD'
+          )
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'missing staged-site contract content: {missing}')
+
+          if 'github.com/BurhanAbdullah/Syswatch/releases/download/' in text:
+              raise SystemExit('staged site must not expose a release-artifact download URL before release clearance')
+
+          class Parser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.links = []
+                  self.images = 0
+
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == 'a' and attrs.get('href'):
+                      self.links.append(attrs['href'])
+                  if tag == 'img':
+                      alt = attrs.get('alt', '')
+                      if not alt.strip():
+                          raise SystemExit('staged site contains an image without non-empty alt text')
+                      self.images += 1
+
+          parser = Parser()
+          parser.feed(text)
+          if parser.images < 1:
+              raise SystemExit('staged site must expose the System Watch logo')
+
+          for href in parser.links:
+              if href.startswith(('#', 'http://', 'https://', 'mailto:')):
+                  continue
+              target = (index.parent / href).resolve()
+              if root not in target.parents and target != root:
+                  raise SystemExit(f'local link escapes staged-site root: {href}')
+              if not target.exists():
+                  raise SystemExit(f'broken staged-site local link: {href}')
+
+          css = text
+          required_css = ('@media(max-width:850px)', '@media(max-width:560px)', 'prefers-reduced-motion')
+          missing_css = [item for item in required_css if item not in css]
+          if missing_css:
+              raise SystemExit(f'missing responsive/reduced-motion CSS contract: {missing_css}')
+
+          robots = (root / 'robots.txt').read_text(encoding='utf-8')
+          if 'Disallow: /' not in robots:
+              raise SystemExit('pre-release robots.txt must disallow indexing')
+
+          print('validated staged-site existence, branding, release lock, image alt text, local links, responsive/motion contracts, and robots policy')
+          PY
+
+      - name: Confirm staged site is non-deploying
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE 'actions/(configure-pages|deploy-pages|upload-pages-artifact)@' .github/workflows; then
+            echo 'Pages deployment action found in repository workflows before release gate cleared' >&2
+            exit 1
+          fi
