@@ -115,9 +115,9 @@ case "${1:-help}" in
     ;;
   version)
     if [[ -f "$ROOT/VERSION" ]]; then
-      cat "$ROOT/VERSION"
-    elif [[ -f "$ROOT/RELEASE-METADATA.txt" ]]; then
-      head -n 1 "$ROOT/RELEASE-METADATA.txt"
+      printf 'SYSWATCH %s\n' "$(cat "$ROOT/VERSION")"
+    elif [[ -d "$ROOT/.git" ]] && command -v git >/dev/null 2>&1; then
+      printf 'SYSWATCH development build (commit %s)\n' "$(git -C "$ROOT" rev-parse --short HEAD)"
     else
       echo "SYSWATCH development build (ref: ${SYSWATCH_REF:-unknown})"
     fi
