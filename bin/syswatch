@@ -4,7 +4,8 @@ set -Eeuo pipefail
 SERVICE="syswatch.service"
 URL="${SYSWATCH_URL:-http://127.0.0.1:8080}"
 ROOT="${SYSWATCH_ROOT:-/opt/syswatch}"
-STATE_DIR="${SYSWATCH_STATE_DIR:-/var/lib/syswatch}"
+SYSTEM_STATE_DIR="${SYSWATCH_STATE_DIR:-/var/lib/syswatch}"
+USER_STATE_DIR="${XDG_STATE_HOME:-${HOME:-/tmp/.syswatch-user-state}}/syswatch"
 
 usage() {
   cat <<'EOF'
@@ -45,6 +46,17 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "SYSWATCH: required command not found: $1" >&2; exit 127; }
 }
 
+run_signal_bridge() {
+  require_cmd python3
+  local state_dir="$SYSTEM_STATE_DIR"
+  if [[ "$(id -u)" -ne 0 ]]; then
+    state_dir="$USER_STATE_DIR"
+    mkdir -p "$state_dir"
+  fi
+  export SYSWATCH_STATE_DIR="$state_dir"
+  exec "$ROOT/syswatch/agents/feed_signal.sh" "$@"
+}
+
 health() {
   require_cmd python3
   python3 - "$URL/api/health" <<'PY'
@@ -66,21 +78,37 @@ PY
 case "${1:-help}" in
   start)
     require_cmd systemctl
+    if [[ "$(cat /proc/1/comm 2>/dev/null || true)" != "systemd" ]]; then
+      echo "SYSWATCH: service lifecycle requires a systemd host (PID 1 is not systemd)." >&2
+      exit 1
+    fi
     systemctl start "$SERVICE"
     health
     ;;
   stop)
     require_cmd systemctl
+    if [[ "$(cat /proc/1/comm 2>/dev/null || true)" != "systemd" ]]; then
+      echo "SYSWATCH: service lifecycle requires a systemd host (PID 1 is not systemd)." >&2
+      exit 1
+    fi
     systemctl stop "$SERVICE"
     echo "SYSWATCH stopped."
     ;;
   restart)
     require_cmd systemctl
+    if [[ "$(cat /proc/1/comm 2>/dev/null || true)" != "systemd" ]]; then
+      echo "SYSWATCH: service lifecycle requires a systemd host (PID 1 is not systemd)." >&2
+      exit 1
+    fi
     systemctl restart "$SERVICE"
     health
     ;;
   status)
     require_cmd systemctl
+    if [[ "$(cat /proc/1/comm 2>/dev/null || true)" != "systemd" ]]; then
+      echo "SYSWATCH: non-systemd container; service status is unavailable."
+      exit 0
+    fi
     systemctl --no-pager --full status "$SERVICE"
     ;;
   health)
@@ -101,6 +129,10 @@ case "${1:-help}" in
     ;;
   logs)
     require_cmd journalctl
+    if [[ "$(cat /proc/1/comm 2>/dev/null || true)" != "systemd" ]]; then
+      echo "SYSWATCH: non-systemd container; journal logs are unavailable."
+      exit 0
+    fi
     journalctl -u "$SERVICE" -n "${SYSWATCH_LOG_LINES:-100}" --no-pager
     ;;
   scan)
@@ -108,15 +140,12 @@ case "${1:-help}" in
     exec python3 "$ROOT/syswatch/api/cli.py" scan
     ;;
   demo)
-    require_cmd python3
-    export SYSWATCH_STATE_DIR="$STATE_DIR"
-    exec "$ROOT/syswatch/agents/feed_signal.sh" --demo
+    run_signal_bridge --demo
     ;;
   signal)
-    require_cmd python3
     shift
-    export SYSWATCH_STATE_DIR="$STATE_DIR"
-    exec "$ROOT/syswatch/agents/feed_signal.sh" "$@"
+    [[ $# -ge 1 ]] || { echo "SYSWATCH: signal type required." >&2; usage >&2; exit 2; }
+    run_signal_bridge "$@"
     ;;
   version)
     if [[ -f "$ROOT/VERSION" ]]; then
@@ -128,11 +157,11 @@ case "${1:-help}" in
     fi
     ;;
   doctor)
-    require_cmd systemctl
     require_cmd python3
     printf 'SYSWATCH doctor\n'
     printf '  root: %s\n' "$ROOT"
-    printf '  state: %s\n' "$STATE_DIR"
+    printf '  service-state: %s\n' "$SYSTEM_STATE_DIR"
+    printf '  interactive-state: %s\n' "$USER_STATE_DIR"
     printf '  service: %s\n' "$SERVICE"
     printf '  dashboard: %s\n' "$URL"
     if [[ "$(cat /proc/1/comm 2>/dev/null || true)" != "systemd" ]]; then
@@ -142,11 +171,16 @@ case "${1:-help}" in
       echo '  health: unavailable (start SYSWATCH on a systemd host)'
       exit 0
     fi
+    require_cmd systemctl
     systemctl is-enabled "$SERVICE" >/dev/null 2>&1 && echo '  enabled: yes' || echo '  enabled: no'
     systemctl is-active "$SERVICE" >/dev/null 2>&1 && echo '  running: yes' || echo '  running: no'
     health
     ;;
   uninstall)
+    if [[ "$(id -u)" -ne 0 ]]; then
+      echo "SYSWATCH: uninstall requires sudo." >&2
+      exit 1
+    fi
     exec "$ROOT/uninstall.sh"
     ;;
   help|-h|--help)
