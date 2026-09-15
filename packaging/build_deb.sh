@@ -33,6 +33,7 @@ if ! getent passwd syswatch >/dev/null; then
 fi
 install -d -m 0750 -o syswatch -g syswatch /var/lib/syswatch
 chown -R root:root /opt/syswatch
+install -m 0755 /opt/syswatch/bin/syswatch /usr/local/bin/syswatch
 cat > /etc/systemd/system/syswatch.service <<SERVICE
 [Unit]
 Description=SYSWATCH Pro Host Security Monitor
@@ -66,19 +67,6 @@ StateDirectoryMode=0750
 [Install]
 WantedBy=multi-user.target
 SERVICE
-cat > /usr/local/bin/syswatch <<'CMD'
-#!/bin/sh
-case "${1:-start}" in
-  start) systemctl start syswatch.service; echo "SYSWATCH: http://127.0.0.1:8080" ;;
-  stop) systemctl stop syswatch.service ;;
-  restart) systemctl restart syswatch.service ;;
-  status) systemctl --no-pager status syswatch.service ;;
-  logs) journalctl -u syswatch.service -n 100 --no-pager ;;
-  open) xdg-open http://127.0.0.1:8080 2>/dev/null || true ;;
-  *) echo "Usage: syswatch {start|stop|restart|status|logs|open}"; exit 2 ;;
-esac
-CMD
-chmod 0755 /usr/local/bin/syswatch
 cat > /usr/local/bin/syswatch-signal <<'SIGNAL'
 #!/bin/sh
 set -e
