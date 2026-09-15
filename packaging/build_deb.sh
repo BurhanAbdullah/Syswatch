@@ -17,6 +17,7 @@ printf '%s\n' "$VERSION" > "$ROOT/opt/syswatch/VERSION"
 
 find "$ROOT/opt/syswatch" -print0 | xargs -0 touch --date="@$SOURCE_DATE_EPOCH"
 chmod 0755 "$ROOT/opt/syswatch/bin/syswatch"
+chmod 0755 "$ROOT/opt/syswatch/syswatch/agents/feed_signal.sh"
 
 cat > "$ROOT/DEBIAN/control" <<EOF
 Package: syswatch
@@ -44,6 +45,7 @@ cat > /etc/systemd/system/syswatch.service <<SERVICE
 [Unit]
 Description=SYSWATCH Pro Host Security Monitor
 After=network.target
+
 [Service]
 Type=simple
 User=syswatch
@@ -70,6 +72,7 @@ AmbientCapabilities=
 ReadWritePaths=/var/lib/syswatch
 StateDirectory=syswatch
 StateDirectoryMode=0750
+
 [Install]
 WantedBy=multi-user.target
 SERVICE
@@ -82,32 +85,37 @@ SIGNAL
 chmod 0755 /usr/local/bin/syswatch-signal
 systemctl daemon-reload
 systemctl enable syswatch.service
-systemctl restart syswatch.service || systemctl start syswatch.service
+if [ -d /run/systemd/system ] && [ "$(cat /proc/1/comm 2>/dev/null || true)" = "systemd" ]; then
+  systemctl restart syswatch.service || systemctl start syswatch.service
+else
+  echo "SYSWATCH: package installed; systemd is not PID 1, so the service was not started in this container."
+fi
 EOF
 chmod 0755 "$ROOT/DEBIAN/postinst"
 
 cat > "$ROOT/DEBIAN/postrm" <<'EOF'
 #!/bin/sh
 set -e
+SYSTEMD_ACTIVE=0
+if [ -d /run/systemd/system ] && [ "$(cat /proc/1/comm 2>/dev/null || true)" = "systemd" ]; then SYSTEMD_ACTIVE=1; fi
 case "${1:-}" in
   remove)
-    systemctl disable --now syswatch.service 2>/dev/null || true
+    if [ "$SYSTEMD_ACTIVE" -eq 1 ]; then systemctl disable --now syswatch.service 2>/dev/null || true; fi
     rm -f /etc/systemd/system/syswatch.service /usr/local/bin/syswatch /usr/local/bin/syswatch-signal
-    systemctl daemon-reload 2>/dev/null || true
+    if [ "$SYSTEMD_ACTIVE" -eq 1 ]; then systemctl daemon-reload 2>/dev/null || true; fi
     ;;
   purge)
-    systemctl disable --now syswatch.service 2>/dev/null || true
+    if [ "$SYSTEMD_ACTIVE" -eq 1 ]; then systemctl disable --now syswatch.service 2>/dev/null || true; fi
     rm -f /etc/systemd/system/syswatch.service /usr/local/bin/syswatch /usr/local/bin/syswatch-signal
     rm -rf /var/lib/syswatch
     if getent passwd syswatch >/dev/null; then userdel syswatch 2>/dev/null || true; fi
     if getent group syswatch >/dev/null; then groupdel syswatch 2>/dev/null || true; fi
-    systemctl daemon-reload 2>/dev/null || true
+    if [ "$SYSTEMD_ACTIVE" -eq 1 ]; then systemctl daemon-reload 2>/dev/null || true; fi
     ;;
 esac
 EOF
 chmod 0755 "$ROOT/DEBIAN/postrm"
 
-# dpkg requires the package control directory to be in the 0755..0775 range.
 chmod 0755 "$ROOT/DEBIAN"
 
 OUTPUT="syswatch_${VERSION}_amd64.deb"
