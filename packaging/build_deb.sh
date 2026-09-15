@@ -8,11 +8,15 @@ SOURCE_REF="${2:-HEAD}"
 SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$SOURCE_REF")"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/syswatch-deb.XXXXXX")"
 trap 'rm -rf "$ROOT"' EXIT
+
 mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/syswatch" "$ROOT/usr/local/bin"
+chmod 0755 "$ROOT/DEBIAN" "$ROOT/opt/syswatch" "$ROOT/usr/local/bin"
+
 git archive --format=tar --prefix=syswatch/ "$SOURCE_REF" | tar -x -C "$ROOT/opt/syswatch" --strip-components=1
 printf '%s\n' "$VERSION" > "$ROOT/opt/syswatch/VERSION"
 
 find "$ROOT/opt/syswatch" -print0 | xargs -0 touch --date="@$SOURCE_DATE_EPOCH"
+chmod 0755 "$ROOT/opt/syswatch/bin/syswatch"
 
 cat > "$ROOT/DEBIAN/control" <<EOF
 Package: syswatch
@@ -25,6 +29,7 @@ Maintainer: Burhan Abdullah
 Description: SYSWATCH PRO host security monitoring
  Local-first host security monitoring and intrusion detection dashboard.
 EOF
+
 cat > "$ROOT/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
@@ -79,7 +84,8 @@ systemctl daemon-reload
 systemctl enable syswatch.service
 systemctl restart syswatch.service || systemctl start syswatch.service
 EOF
-chmod 755 "$ROOT/DEBIAN/postinst"
+chmod 0755 "$ROOT/DEBIAN/postinst"
+
 cat > "$ROOT/DEBIAN/postrm" <<'EOF'
 #!/bin/sh
 set -e
@@ -99,7 +105,10 @@ case "${1:-}" in
     ;;
 esac
 EOF
-chmod 755 "$ROOT/DEBIAN/postrm"
+chmod 0755 "$ROOT/DEBIAN/postrm"
+
+# dpkg requires the package control directory to be in the 0755..0775 range.
+chmod 0755 "$ROOT/DEBIAN"
 
 OUTPUT="syswatch_${VERSION}_amd64.deb"
 SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" dpkg-deb --build --root-owner-group "$ROOT" "$OUTPUT" >/dev/null
