@@ -8,17 +8,19 @@ set -euo pipefail
 DEB="${1:?usage: test_ubuntu_systemd_host.sh PACKAGE.deb}"
 [[ -f "$DEB" ]]
 
-if [[ "$(. /etc/os-release && echo "$ID $VERSION_ID")" != "ubuntu 24.04" ]]; then
+OS_ID="$(. /etc/os-release && printf '%s' "$ID")"
+OS_VERSION="$(. /etc/os-release && printf '%s' "$VERSION_ID")"
+[[ "$OS_ID" == "ubuntu" && "$OS_VERSION" == "24.04" ]] || {
   echo "SYSWATCH host validation requires Ubuntu 24.04" >&2
   exit 1
-fi
+}
 
-if [[ "$(cat /proc/1/comm 2>/dev/null || true)" != "systemd" ]]; then
+[[ "$(cat /proc/1/comm 2>/dev/null || true)" == "systemd" ]] || {
   echo "SYSWATCH host validation requires systemd as PID 1" >&2
   exit 1
-fi
+}
 
-for command in dpkg dpkg-deb systemctl curl python3 id stat getent journalctl; do
+for command in dpkg dpkg-deb systemctl curl python3 id stat getent journalctl ps; do
   command -v "$command" >/dev/null
  done
 
@@ -27,6 +29,7 @@ VERSION="$(dpkg-deb -f "$DEB" Version)"
 
 cleanup() {
   dpkg --purge syswatch >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/syswatch.service /usr/local/bin/syswatch /usr/local/bin/syswatch-signal
   systemctl daemon-reload >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -58,7 +61,7 @@ wait_for_health() {
   return 1
 }
 
-# Clean baseline.
+# Ensure a deterministic clean baseline.
 dpkg --purge syswatch >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/syswatch.service /usr/local/bin/syswatch /usr/local/bin/syswatch-signal
 systemctl daemon-reload
@@ -67,7 +70,6 @@ systemctl daemon-reload
 dpkg -i "$DEB"
 systemctl is-enabled syswatch.service
 systemctl is-active syswatch.service
-
 [[ "$(ps -p 1 -o comm= | tr -d ' ')" == "systemd" ]]
 id syswatch
 [[ "$(stat -c '%U:%G:%a' /var/lib/syswatch)" == "syswatch:syswatch:750" ]]
@@ -93,24 +95,27 @@ syswatch logs >/tmp/syswatch-logs.txt
 syswatch dashboard | grep -F 'http://127.0.0.1:8080'
 
 # Restart contract.
-sudo systemctl restart syswatch.service
+systemctl restart syswatch.service
 systemctl is-active syswatch.service
 wait_for_health /tmp/syswatch-health-restart.json
 
 # Stop/start contract.
-sudo systemctl stop syswatch.service
+systemctl stop syswatch.service
 if curl -fsS --max-time 2 http://127.0.0.1:8080/api/health >/dev/null 2>&1; then
   echo 'SYSWATCH health unexpectedly remained available after stop' >&2
   exit 1
 fi
-sudo systemctl start syswatch.service
+systemctl start syswatch.service
 systemctl is-active syswatch.service
 wait_for_health /tmp/syswatch-health-start.json
 
-# Journal contract.
-journalctl -u syswatch.service -n 100 --no-pager | grep -F 'SYSWATCH' >/dev/null || true
+# Journal contract: at least one service log line must be present.
+if ! journalctl -u syswatch.service -n 100 --no-pager | grep -F 'SYSWATCH' >/dev/null; then
+  echo 'SYSWATCH journal log evidence not found' >&2
+  exit 1
+fi
 
-# Upgrade contract using a second package version if the caller provides one.
+# Optional upgrade contract when a second .deb is supplied.
 if [[ -n "${SYSWATCH_UPGRADE_DEB:-}" ]]; then
   [[ -f "$SYSWATCH_UPGRADE_DEB" ]]
   UPGRADE_VERSION="$(dpkg-deb -f "$SYSWATCH_UPGRADE_DEB" Version)"
