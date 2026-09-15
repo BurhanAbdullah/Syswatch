@@ -1,10 +1,35 @@
 # SYSWATCH
 
-**SYSWATCH** is a local-first Linux endpoint-security project that turns host telemetry and normalized security signals into causal attack context for a local operator console.
+**SYSWATCH** is a local-first endpoint-security project that turns host telemetry and normalized security signals into causal attack context for a local operator console.
 
 > Observe → Correlate → Understand → Respond
 
 SYSWATCH is under active development. This repository deliberately separates what is implemented, what has been exercised in CI, and what is not yet a supported release claim.
+
+## Product goal: install, then use
+
+SYSWATCH is being productized as a **command-first local security tool**, not just a research repository. A finished supported release must let an operator install it, verify it, control the service, inspect health/logs, open the dashboard, run a safe scan, and exercise the synthetic signal bridge without editing Python files.
+
+The intended operator experience is:
+
+```bash
+# install a verified release
+sudo apt install ./syswatch_<version>_amd64.deb
+
+# operate SYSWATCH from the shell
+syswatch start
+syswatch status
+syswatch health
+syswatch dashboard
+syswatch logs
+syswatch scan
+syswatch signal NEW-PORT "Port 2222 opened"
+syswatch uninstall
+```
+
+The repository now contains a dependency-free command launcher under `bin/syswatch` implementing this command contract. The packaged installer/DEB integration is still a release-readiness task and must be exercised in the real Ubuntu 24.04 lifecycle before the command surface is promoted as a released interface.
+
+For development/testing, the current installer already creates `/usr/local/bin/syswatch` and `/usr/local/bin/syswatch-signal` and supports service lifecycle commands. `main` remains a development branch and is not a substitute for a versioned release.
 
 ## Current verified scope
 
@@ -70,6 +95,29 @@ http://127.0.0.1:8080
 
 Do not expose the dashboard directly to an untrusted network without an explicit authentication and network-security design.
 
+## Command-line product contract
+
+The command surface is intentionally designed to be understandable without knowing the internal Python modules:
+
+| Command | Purpose |
+|---|---|
+| `syswatch start` | Start the local service and verify health |
+| `syswatch stop` | Stop the service |
+| `syswatch restart` | Restart and verify health |
+| `syswatch status` | Show systemd service state |
+| `syswatch health` | Verify the exact local health contract |
+| `syswatch dashboard` | Print the local dashboard URL |
+| `syswatch open` | Open the dashboard when a desktop browser opener exists |
+| `syswatch logs` | Show recent service logs |
+| `syswatch scan` | Run the bounded safe local scan |
+| `syswatch demo` | Feed synthetic demonstration signals |
+| `syswatch signal ...` | Send a normalized security signal |
+| `syswatch version` | Show installed release/ref information |
+| `syswatch doctor` | Run local installation diagnostics |
+| `syswatch uninstall` | Remove SYSWATCH |
+
+No command in this interface enables privileged host mutation or real containment. The response/containment boundary remains fail-closed.
+
 ## Uninstall
 
 For a standalone development installation:
@@ -78,7 +126,7 @@ For a standalone development installation:
 sudo /opt/syswatch/uninstall.sh
 ```
 
-or:
+or, through the command interface:
 
 ```bash
 sudo syswatch uninstall
@@ -178,14 +226,16 @@ bash syswatch/agents/feed_signal.sh --demo
 
 Completed repository gates include protected-state hardening, bounded adversarial/race/soak regression coverage, deterministic Debian packaging, least-privilege service hardening, installer rollback validation, exact health-contract validation, supply-chain checks, release reproducibility checks and provenance/lifecycle ordering in the release workflow.
 
-The remaining release gates are intentionally narrower:
+The remaining product/release gates are intentionally narrower:
 
-1. Create/execute a real semantic-version release tag on the supported Linux target.
-2. Review the resulting versioned artifact, SHA-256 checksum, byte-for-byte rebuild evidence, lifecycle evidence and provenance attestation.
-3. Perform the final security/reliability/reproducibility audit against that actual release evidence.
-4. Publish and synchronize the SYSWATCH product website only after the verified release exists.
-5. Add any additional platform/distribution only after equivalent executable validation exists.
-6. Obtain an independent external security evaluation before making that claim.
+1. Integrate the command launcher into the real standalone installer and Debian package, then exercise the full command contract on Ubuntu 24.04.
+2. Create/execute a real semantic-version release tag on the supported Linux target.
+3. Review the resulting versioned artifact, SHA-256 checksum, byte-for-byte rebuild evidence, lifecycle evidence and provenance attestation.
+4. Perform the final security/reliability/reproducibility audit against that actual release evidence.
+5. Publish and synchronize the SYSWATCH product website only after the verified release exists.
+6. Add Windows as a released platform only after the versioned executable passes native telemetry/API, deterministic-build, smoke, checksum and provenance gates.
+7. Add any additional platform/distribution only after equivalent executable validation exists.
+8. Obtain an independent external security evaluation before making that claim.
 
 Issue #4 tracks the security maturity/release-readiness roadmap and remains open while these gates are incomplete.
 
