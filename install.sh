@@ -207,21 +207,10 @@ fi
 mv "$STAGED" "$PREFIX"
 SWAPPED=1
 
-cat > "$BIN" <<'EOF'
-#!/usr/bin/env bash
-set -e
-case "${1:-start}" in
-  start) systemctl start syswatch.service; echo "SYSWATCH is running at http://127.0.0.1:8080" ;;
-  stop) systemctl stop syswatch.service ;;
-  restart) systemctl restart syswatch.service ;;
-  status) systemctl --no-pager status syswatch.service ;;
-  logs) journalctl -u syswatch.service -n 100 --no-pager ;;
-  open) xdg-open http://127.0.0.1:8080 2>/dev/null || true ;;
-  uninstall) /opt/syswatch/uninstall.sh ;;
-  *) echo "Usage: syswatch {start|stop|restart|status|logs|open|uninstall}"; exit 2 ;;
-esac
-EOF
-chmod 0755 "$BIN"
+# Install the version-controlled command-first CLI verbatim.  Keep the
+# privileged launcher outside the application tree, but make it the same
+# interface used by the repository, standalone installer, and Debian package.
+install -m 0755 "$PREFIX/bin/syswatch" "$BIN"
 
 cat > "$SIGNAL_BIN" <<'EOF'
 #!/usr/bin/env bash
@@ -286,8 +275,6 @@ chmod 0755 "$PREFIX/uninstall.sh"
 systemctl daemon-reload
 systemctl enable --now "$APP_NAME.service"
 
-# A new install/upgrade is committed only after the exact application health
-# identity is observable on loopback.
 verify_local_health
 
 if [[ -n "$BACKUP" && -d "$BACKUP" ]]; then
@@ -301,5 +288,5 @@ STATE_CREATED=0
 printf '\nSYSWATCH PRO installed successfully.\n'
 printf 'Version/ref: %s\n' "$REF"
 printf 'Dashboard: http://127.0.0.1:8080\n'
-printf 'Commands: syswatch {start|stop|restart|status|logs|open|uninstall}\n'
+printf 'Commands: syswatch {start|stop|restart|status|health|dashboard|open|logs|scan|demo|signal|version|doctor|uninstall}\n'
 printf 'Signal bridge: syswatch-signal SIGNAL "details"\n'
