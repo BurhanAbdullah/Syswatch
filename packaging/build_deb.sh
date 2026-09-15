@@ -10,6 +10,7 @@ ROOT="$(mktemp -d "${TMPDIR:-/tmp}/syswatch-deb.XXXXXX")"
 trap 'rm -rf "$ROOT"' EXIT
 mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/syswatch" "$ROOT/usr/local/bin"
 git archive --format=tar --prefix=syswatch/ "$SOURCE_REF" | tar -x -C "$ROOT/opt/syswatch" --strip-components=1
+printf '%s\n' "$VERSION" > "$ROOT/opt/syswatch/VERSION"
 
 find "$ROOT/opt/syswatch" -print0 | xargs -0 touch --date="@$SOURCE_DATE_EPOCH"
 
