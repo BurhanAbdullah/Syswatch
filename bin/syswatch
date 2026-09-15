@@ -4,6 +4,7 @@ set -Eeuo pipefail
 SERVICE="syswatch.service"
 URL="${SYSWATCH_URL:-http://127.0.0.1:8080}"
 ROOT="${SYSWATCH_ROOT:-/opt/syswatch}"
+STATE_DIR="${SYSWATCH_STATE_DIR:-/var/lib/syswatch}"
 
 usage() {
   cat <<'EOF'
@@ -13,21 +14,21 @@ Usage:
   syswatch <command>
 
 Commands:
-  start       Start the SYSWATCH service
-  stop        Stop the SYSWATCH service
-  restart     Restart the SYSWATCH service
-  status      Show service status
-  health      Check the local application health API
-  dashboard   Print the local dashboard URL
-  open        Open the local dashboard when a desktop opener is available
-  logs        Show recent service logs
-  scan        Run the safe local security scan
-  demo        Feed synthetic demonstration signals
-  signal      Send a normalized security signal
-  version     Show installed SYSWATCH version/ref
-  doctor      Run local installation diagnostics
-  uninstall   Remove SYSWATCH
-  help        Show this help
+  start        Start the SYSWATCH service
+  stop         Stop the SYSWATCH service
+  restart      Restart the SYSWATCH service
+  status       Show service status
+  health       Check the local application health API
+  dashboard    Print the local dashboard URL
+  open         Open the local dashboard when a desktop opener is available
+  logs         Show recent service logs
+  scan         Run the safe local security scan
+  demo         Feed synthetic demonstration signals
+  signal       Send a normalized security signal
+  version      Show installed SYSWATCH version/ref
+  doctor       Run local installation diagnostics
+  uninstall    Remove SYSWATCH
+  help         Show this help
 
 Examples:
   sudo syswatch start
@@ -107,10 +108,14 @@ case "${1:-help}" in
     exec python3 "$ROOT/syswatch/api/cli.py" scan
     ;;
   demo)
+    require_cmd python3
+    export SYSWATCH_STATE_DIR="$STATE_DIR"
     exec "$ROOT/syswatch/agents/feed_signal.sh" --demo
     ;;
   signal)
+    require_cmd python3
     shift
+    export SYSWATCH_STATE_DIR="$STATE_DIR"
     exec "$ROOT/syswatch/agents/feed_signal.sh" "$@"
     ;;
   version)
@@ -127,8 +132,16 @@ case "${1:-help}" in
     require_cmd python3
     printf 'SYSWATCH doctor\n'
     printf '  root: %s\n' "$ROOT"
+    printf '  state: %s\n' "$STATE_DIR"
     printf '  service: %s\n' "$SERVICE"
     printf '  dashboard: %s\n' "$URL"
+    if [[ "$(cat /proc/1/comm 2>/dev/null || true)" != "systemd" ]]; then
+      echo '  environment: container/non-systemd (service lifecycle unavailable)'
+      echo '  enabled: unavailable'
+      echo '  running: unavailable'
+      echo '  health: unavailable (start SYSWATCH on a systemd host)'
+      exit 0
+    fi
     systemctl is-enabled "$SERVICE" >/dev/null 2>&1 && echo '  enabled: yes' || echo '  enabled: no'
     systemctl is-active "$SERVICE" >/dev/null 2>&1 && echo '  running: yes' || echo '  running: no'
     health
