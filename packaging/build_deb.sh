@@ -15,9 +15,13 @@ chmod 0755 "$ROOT/DEBIAN" "$ROOT/opt/syswatch" "$ROOT/usr/local/bin"
 git archive --format=tar --prefix=syswatch/ "$SOURCE_REF" | tar -x -C "$ROOT/opt/syswatch" --strip-components=1
 printf '%s\n' "$VERSION" > "$ROOT/opt/syswatch/VERSION"
 
-find "$ROOT/opt/syswatch" -print0 | xargs -0 touch --date="@$SOURCE_DATE_EPOCH"
+# Normalize the archive's directory permissions so the installed package is
+# traversable by the unprivileged SYSWATCH service user and CLI users.
+find "$ROOT/opt/syswatch" -type d -exec chmod 0755 {} +
+find "$ROOT/opt/syswatch" -type f -name '*.sh' -exec chmod 0755 {} +
 chmod 0755 "$ROOT/opt/syswatch/bin/syswatch"
-chmod 0755 "$ROOT/opt/syswatch/syswatch/agents/feed_signal.sh"
+
+find "$ROOT/opt/syswatch" -print0 | xargs -0 touch --date="@$SOURCE_DATE_EPOCH"
 
 cat > "$ROOT/DEBIAN/control" <<EOF
 Package: syswatch
@@ -115,7 +119,6 @@ case "${1:-}" in
 esac
 EOF
 chmod 0755 "$ROOT/DEBIAN/postrm"
-
 chmod 0755 "$ROOT/DEBIAN"
 
 OUTPUT="syswatch_${VERSION}_amd64.deb"
