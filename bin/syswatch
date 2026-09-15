@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SERVICE="syswatch.service"
+URL="${SYSWATCH_URL:-http://127.0.0.1:8080}"
+ROOT="${SYSWATCH_ROOT:-/opt/syswatch}"
+
+usage() {
+  cat <<'EOF'
+SYSWATCH — local-first endpoint security
+
+Usage:
+  syswatch <command>
+
+Commands:
+  start       Start the SYSWATCH service
+  stop        Stop the SYSWATCH service
+  restart     Restart the SYSWATCH service
+  status      Show service status
+  health      Check the local application health API
+  dashboard   Print the local dashboard URL
+  open        Open the local dashboard when a desktop opener is available
+  logs        Show recent service logs
+  scan        Run the safe local security scan
+  demo        Feed synthetic demonstration signals
+  signal      Send a normalized security signal
+  version     Show installed SYSWATCH version/ref
+  doctor      Run local installation diagnostics
+  uninstall   Remove SYSWATCH
+  help        Show this help
+
+Examples:
+  sudo syswatch start
+  syswatch status
+  syswatch health
+  syswatch scan
+  syswatch demo
+  syswatch signal NEW-PORT "Port 2222 opened"
+  syswatch logs
+EOF
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || { echo "SYSWATCH: required command not found: $1" >&2; exit 127; }
+}
+
+health() {
+  require_cmd python3
+  python3 - "$URL/api/health" <<'PY'
+import json, sys, urllib.error, urllib.request
+url = sys.argv[1]
+try:
+    with urllib.request.urlopen(url, timeout=3) as response:
+        payload = json.load(response)
+        if response.status != 200 or payload != {"ok": True, "service": "syswatch", "agent": "online"}:
+            print(json.dumps(payload, indent=2))
+            raise SystemExit(1)
+        print(json.dumps(payload, indent=2))
+except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+    print(f"SYSWATCH health check failed: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
+case "${1:-help}" in
+  start)
+    require_cmd systemctl
+    systemctl start "$SERVICE"
+    health
+    ;;
+  stop)
+    require_cmd systemctl
+    systemctl stop "$SERVICE"
+    echo "SYSWATCH stopped."
+    ;;
+  restart)
+    require_cmd systemctl
+    systemctl restart "$SERVICE"
+    health
+    ;;
+  status)
+    require_cmd systemctl
+    systemctl --no-pager --full status "$SERVICE"
+    ;;
+  health)
+    health
+    ;;
+  dashboard|url)
+    echo "$URL"
+    ;;
+  open)
+    echo "SYSWATCH dashboard: $URL"
+    if command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$URL" >/dev/null 2>&1 || true
+    elif command -v sensible-browser >/dev/null 2>&1; then
+      sensible-browser "$URL" >/dev/null 2>&1 || true
+    else
+      echo "No desktop opener found; open the URL above in a browser."
+    fi
+    ;;
+  logs)
+    require_cmd journalctl
+    journalctl -u "$SERVICE" -n "${SYSWATCH_LOG_LINES:-100}" --no-pager
+    ;;
+  scan)
+    require_cmd python3
+    exec python3 "$ROOT/syswatch/api/cli.py" scan
+    ;;
+  demo)
+    exec "$ROOT/syswatch/agents/feed_signal.sh" --demo
+    ;;
+  signal)
+    shift
+    exec "$ROOT/syswatch/agents/feed_signal.sh" "$@"
+    ;;
+  version)
+    if [[ -f "$ROOT/VERSION" ]]; then
+      cat "$ROOT/VERSION"
+    elif [[ -f "$ROOT/RELEASE-METADATA.txt" ]]; then
+      head -n 1 "$ROOT/RELEASE-METADATA.txt"
+    else
+      echo "SYSWATCH development build (ref: ${SYSWATCH_REF:-unknown})"
+    fi
+    ;;
+  doctor)
+    require_cmd systemctl
+    require_cmd python3
+    printf 'SYSWATCH doctor\n'
+    printf '  root: %s\n' "$ROOT"
+    printf '  service: %s\n' "$SERVICE"
+    printf '  dashboard: %s\n' "$URL"
+    systemctl is-enabled "$SERVICE" >/dev/null 2>&1 && echo '  enabled: yes' || echo '  enabled: no'
+    systemctl is-active "$SERVICE" >/dev/null 2>&1 && echo '  running: yes' || echo '  running: no'
+    health
+    ;;
+  uninstall)
+    exec "$ROOT/uninstall.sh"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "SYSWATCH: unknown command: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
