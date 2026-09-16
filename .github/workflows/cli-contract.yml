@@ -1,0 +1,44 @@
+name: SYSWATCH CLI contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bin/syswatch'
+      - 'scripts/validate_cli_contract.sh'
+      - '.github/workflows/cli-contract.yml'
+  pull_request:
+    paths:
+      - 'bin/syswatch'
+      - 'scripts/validate_cli_contract.sh'
+      - '.github/workflows/cli-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safe-cli:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate launcher and safe CLI contract
+        shell: bash
+        run: bash scripts/validate_cli_contract.sh
+
+      - name: Assert no host mutation or containment is enabled by this test
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE '(^|[^A-Za-z])(iptables|nft|ufw|firewall-cmd|shutdown|reboot|kill|pkill|systemctl (enable|disable|mask)|/etc/sudoers|CAP_SYS_ADMIN|CAP_NET_ADMIN)([^A-Za-z]|$)' scripts/validate_cli_contract.sh; then
+            echo 'safe CLI contract script contains a privileged host-mutation operation' >&2
+            exit 1
+          fi
