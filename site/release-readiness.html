@@ -38,7 +38,7 @@ body{margin:0;background:#fff;color:#17191d;font:16px/1.65 system-ui,-apple-syst
 </section>
 <section class="card">
 <h2>Operator command contract</h2>
-<div class="code">syswatch install/upgrade/uninstall<br>syswatch start | stop | restart | status | health<br>syswatch dashboard | logs | scan | demo<br>syswatch signal TYPE "message"<br>syswatch version | doctor</div>
+<div class="code"># installation / upgrade are installer operations, not service commands<br>sudo SYSWATCH_REF=main ./install.sh<br>sudo apt install ./syswatch_&lt;version&gt;_amd64.deb<br><br>syswatch start | stop | restart | status | health<br>syswatch dashboard | logs | scan | demo<br>syswatch signal TYPE "message"<br>syswatch version | doctor | uninstall</div>
 <p>Lifecycle commands require a real systemd host. Privileged host mutation and real containment remain disabled by default.</p>
 </section>
 <a class="back" href="https://github.com/BurhanAbdullah/Syswatch">View the repository →</a>
