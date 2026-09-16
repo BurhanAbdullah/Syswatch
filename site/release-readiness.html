@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="description" content="SYSWATCH release-readiness status.">
+<title>SYSWATCH — Release Readiness</title>
+<style>
+body{margin:0;background:#fff;color:#17191d;font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:900px;margin:auto;padding:48px 24px}h1{font-size:42px;line-height:1.05;margin:0 0 8px}h1 span{color:#b91c1c}.eyebrow{font-size:12px;letter-spacing:3px;font-weight:800;color:#b91c1c}.lead{color:#65707a;max-width:720px}.card{border:1px solid #eadfdf;border-radius:14px;padding:22px;margin:18px 0}li{margin:8px 0}.pending{font-weight:800}.ok{font-weight:800}.code{background:#1b1717;color:#fff;border-radius:9px;padding:16px;overflow:auto;font:13px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace}.back{display:inline-block;margin-top:18px;color:#b91c1c;font-weight:800;text-decoration:none}
+</style>
+</head>
+<body>
+<main class="wrap">
+<div class="eyebrow">PRE-RELEASE STATUS</div>
+<h1>SYS<span>WATCH</span> release readiness</h1>
+<p class="lead">This page records the current evidence boundary without turning development or CI evidence into a public release claim.</p>
+<section class="card">
+<h2>Verified repository gates</h2>
+<ul>
+<li class="ok">Python validation matrix and repository regression tests</li>
+<li class="ok">Standalone installer transaction and rollback coverage</li>
+<li class="ok">Debian install → health → upgrade → health → purge lifecycle</li>
+<li class="ok">Windows native executable build, telemetry/API smoke validation and reproducibility checks</li>
+<li class="ok">Security supply-chain checks, SBOM/dependency audit and immutable action references</li>
+<li class="ok">Safe command-launcher contract validation for help, dashboard, version, doctor, status, logs and invalid-command handling</li>
+</ul>
+</section>
+<section class="card">
+<h2>Release gates still pending</h2>
+<ul>
+<li class="pending">Real semantic-versioned release workflow and versioned artifact evidence</li>
+<li class="pending">Final checksum, provenance and byte-for-byte reproducibility evidence for the actual release artifacts</li>
+<li class="pending">Real Ubuntu 24.04 host with systemd as PID 1 for native lifecycle validation</li>
+<li class="pending">Final security/reliability/reproducibility audit</li>
+<li class="pending">Administrative Pages publication gate</li>
+</ul>
+</section>
+<section class="card">
+<h2>Operator command contract</h2>
+<div class="code">syswatch install/upgrade/uninstall<br>syswatch start | stop | restart | status | health<br>syswatch dashboard | logs | scan | demo<br>syswatch signal TYPE "message"<br>syswatch version | doctor</div>
+<p>Lifecycle commands require a real systemd host. Privileged host mutation and real containment remain disabled by default.</p>
+</section>
+<a class="back" href="https://github.com/BurhanAbdullah/Syswatch">View the repository →</a>
+</main>
+</body>
+</html>
